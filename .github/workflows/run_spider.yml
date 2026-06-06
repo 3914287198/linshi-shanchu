@@ -2,7 +2,7 @@ name: Run Music Spider
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * 1' # UTC周一0点=北京时间周一08:00
+      - cron: '0 0 1 * *' # UTC周一0点=北京时间周一08:00
 
 jobs:
   spider_job:
