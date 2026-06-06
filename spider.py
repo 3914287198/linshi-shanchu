@@ -2,6 +2,7 @@
 import requests
 import json
 import time
+import re
 from datetime import datetime
 
 # 全局关闭警告
@@ -18,9 +19,9 @@ headers = {
     "Accept": "application/json, text/javascript, */*; q=0.01",
 }
 
-# PHPSESSID直接写死，不再读取环境变量
+# 【必须手动更新】去浏览器重新复制最新的 PHPSESSID
 cookies = {
-    "PHPSESSID": "b23f9e44c1a857702b62b155d76dd0aa"
+    "PHPSESSID": "13dd07de21c1c762cd04f434cd2826d1"
 }
 
 # 参数顺序严格按照浏览器真实顺序（服务器校验顺序！）
@@ -37,32 +38,54 @@ session.headers.update(headers)
 session.cookies.update(cookies)
 
 all_data = []
+total_count = 0
 CONTINUOUS_SAME_THRESHOLD = 3
 same_data_page_count = 0
+prev_total_length = 0
 
-def resolve_location(url):
+def resolve_location(song_id):
     """
-    解析加密的 location 地址
-    通过禁止重定向获取返回协议头中的真实地址
+    通过访问歌曲详情页解析真实的 location 地址
     """
-    if not url or not url.startswith("http"):
-        return url
+    if not song_id:
+        return ""
+    
+    detail_url = f"https://myhkw.cn/admin/song/{song_id}"
     try:
-        # 极简请求，禁止重定向
         resp = session.get(
-            url,
+            detail_url,
             verify=False,
-            timeout=10,
-            allow_redirects=False
+            timeout=10
         )
-        # 从响应头中获取 Location
-        real_url = resp.headers.get("Location")
-        if real_url:
+        if resp.status_code != 200:
+            return ""
+            
+        # 改进的正则提取逻辑
+        # 1. 提取完整的 input 标签
+        input_tag_match = re.search(r'<input[^>]+name="location"[^>]*>', resp.text, re.I)
+        if input_tag_match:
+            tag_content = input_tag_match.group(0)
+            # 2. 从标签中提取 value 属性值，考虑空格和可能存在的反引号
+            # 匹配 value=" 任意字符 " 或 value=' 任意字符 '
+            value_match = re.search(r'value=["\'](.*?)(?=["\'])', tag_content, re.I)
+            if value_match:
+                real_url = value_match.group(1).strip()
+                # 移除可能存在的包裹反引号
+                real_url = real_url.strip("`").strip()
+                # 替换 &amp; 为 &
+                real_url = real_url.replace("&amp;", "&")
+                return real_url
+        
+        # 备选方案：如果上面的没匹配到，尝试直接在全文搜包含 location 的 value
+        fallback_match = re.search(r'name="location".*?value=["\']\s*`?([^"\'`\s>]+)`?\s*["\']', resp.text, re.S | re.I)
+        if fallback_match:
+            real_url = fallback_match.group(1).replace("&amp;", "&")
             return real_url
-        return url
+            
+        return ""
     except Exception as e:
-        print(f"解析地址失败: {e}")
-        return url
+        print(f"解析地址失败 [{song_id}]: {e}")
+        return ""
 
 def try_request(page):
     params["page"] = page
@@ -89,7 +112,7 @@ def try_request(page):
 try:
     print("开始获取数据...")
 
-    for page in range(1, 20):
+    for page in range(1, 2):
         print(f"正在获取第 {page} 页...")
         res = try_request(page)
         if not res:
@@ -116,10 +139,14 @@ try:
         # 遍历解析加密地址
         for i, song in enumerate(song_list):
             name = song.get("name", "未知")
-            original_url = song.get("location")
-            if original_url:
-                print(f"  [{i+1}/{len(song_list)}] 正在解析: {name}")
-                song["location"] = resolve_location(original_url)
+            # 提取干净的歌名（去掉 HTML 标签）
+            clean_name = re.sub(r'<[^>]+>', '', name).strip()
+            song_db_id = song.get("id")
+            if song_db_id:
+                print(f"  [{i+1}/{len(song_list)}] 正在解析: {clean_name}")
+                real_location = resolve_location(song_db_id)
+                if real_location:
+                    song["location"] = real_location
         
         all_data.extend(song_list)
 
@@ -136,7 +163,7 @@ try:
 
         time.sleep(1.5)
 
-    # 保存文件【当前项目根目录】
+    # 保存文件
     filename = f"{datetime.now().strftime('%Y-%m-%d')}-{len(all_data)}.json"
     with open(filename, "w", encoding="utf-8") as f:
         json.dump({
