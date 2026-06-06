@@ -112,7 +112,7 @@ def try_request(page):
 try:
     print("开始获取数据...")
 
-    for page in range(1, 2):
+    for page in range(1, 20):
         print(f"正在获取第 {page} 页...")
         res = try_request(page)
         if not res:
