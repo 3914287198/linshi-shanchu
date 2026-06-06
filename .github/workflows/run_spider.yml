@@ -1,17 +1,23 @@
 name: Run Music Spider
 on:
-  workflow_dispatch: # 手动触发
-  # schedule: # 定时按需开启 UTC时区
-  #   - cron: '0 8 * * *'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 1' # UTC周一0点=北京时间周一08:00
 
 jobs:
   spider_job:
     runs-on: ubuntu-latest
+    # 消除Node20弃用警告
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    # 关键配置：赋予action提交推送代码权限，彻底解决exit code 128
+    permissions:
+      contents: write
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      - name: 安装Python
+      - name: 配置Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -19,13 +25,14 @@ jobs:
       - name: 安装依赖
         run: pip install requests
 
-      - name: 运行爬虫（无需环境变量）
+      - name: 运行爬虫
         run: python spider.py
 
-      - name: 自动提交生成的JSON文件
+      - name: 提交JSON文件到仓库
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add *.json
-          git commit -m "Auto update json $(date +%Y-%m-%d)" || echo "无新文件无需提交"
+          # 没有新增文件就跳过commit，不报错终止流程
+          git commit -m "自动更新歌单数据 $(date +%Y-%m-%d)" || echo "本次无新增JSON，跳过提交"
           git push
