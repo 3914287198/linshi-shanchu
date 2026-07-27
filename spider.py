@@ -21,7 +21,7 @@ headers = {
 
 # 【必须手动更新】去浏览器重新复制最新的 PHPSESSID
 cookies = {
-    "PHPSESSID": "2edfe8de111ea34a5a88b20e1554f6df"
+    "PHPSESSID": "05e64c1988e331a00de6fe2fdd7a0854"
 }
 
 # 参数顺序严格按照浏览器真实顺序（服务器校验顺序！）
